@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>瑞秝工程 零用金管理</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f4f4f4;
+    }
+    h1 {
+      text-align: center;
+    }
+    .tabs {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .tab {
+      padding: 10px 20px;
+      background: #ccc;
+      margin: 5px;
+      cursor: pointer;
+    }
+    .tab.active {
+      background: #4CAF50;
+      color: white;
+    }
+    .site-section {
+      display: none;
+    }
+    .site-section.active {
+      display: block;
+    }
+    .header, .form-row {
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    input[type="text"], input[type="number"], input[type="date"] {
+      padding: 5px;
+    }
+    input[type="file"] {
+      margin-top: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #999;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #eee;
+    }
+    @media screen and (max-width: 768px) {
+      .header, .form-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>瑞秝工程 零用金管理（雲端版）</h1>
+
+  <div class="tabs" id="tabs"></div>
+  <div style="text-align:center; margin-bottom: 20px;">
+    <input type="text" id="newSiteName" placeholder="輸入新工地名稱">
+    <button onclick="addSite()">新增工地</button>
+  </div>
+
+  <div id="sections"></div>
+
+  <script>
+    const GOOGLE_SCRIPT_URL = 'https://gscript-proxy.netlify.app/relay';
+    const TARGET_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzJP3VmQeRD5Li8ADIpvsaoBCi78u1TSpF7CKrR4hgMmNxk6oBTBun2gqhO2lW1v8BV/exec';
+
+    let sites = ['工地A', '工地B', '工地C'];
+    let siteData = {};
+    let tabs;
+    let sections;
+
+    window.onload = () => {
+      tabs = document.getElementById('tabs');
+      sections = document.getElementById('sections');
+      renderSites();
+    };
+
+    function renderSites() {
+      tabs.innerHTML = '';
+      sections.innerHTML = '';
+
+      sites.forEach((site, index) => {
+        siteData[index] = siteData[index] || { balance: 0, records: [] };
+
+        const tab = document.createElement('div');
+        tab.className = 'tab' + (index === 0 ? ' active' : '');
+        tab.textContent = site;
+        tab.onclick = () => switchSite(index);
+        tabs.appendChild(tab);
+
+        const section = document.createElement('div');
+        section.id = `section-${index}`;
+        section.className = 'site-section' + (index === 0 ? ' active' : '');
+
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'header';
+        headerDiv.innerHTML = `
+          <label>主旨：<input type="text" id="site-name-${index}" value="${site}" onchange="updateSiteName(${index})"></label>
+          <label>初始餘額：<input type="number" id="initial-${index}" value="${siteData[index].balance}" onchange="updateInitial(${index})"></label>
+        `;
+
+        const formRow = document.createElement('div');
+        formRow.className = 'form-row';
+        formRow.innerHTML = `
+          <label>日期：<input type="date" id="date-${index}"></label>
+          <label>品名：<input type="text" id="item-${index}"></label>
+          <label>附價：<input type="number" id="cost-${index}" step="0.01"></label>
+          <label>圖片上傳：<input type="file" id="img-${index}" accept="image/*"></label>
+          <button onclick="addRecord(${index})">新增記錄</button>
+        `;
+
+        const table = document.createElement('table');
+        table.id = `table-${index}`;
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>項次</th>
+              <th>日期</th>
+              <th>品名</th>
+              <th>附價</th>
+              <th>圖片</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        `;
+
+        section.appendChild(headerDiv);
+        section.appendChild(formRow);
+        section.appendChild(table);
+        sections.appendChild(section);
+      });
+    }
+
+    function switchSite(index) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.site-section').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.tab')[index].classList.add('active');
+      document.getElementById(`section-${index}`).classList.add('active');
+    }
+
+    function addSite() {
+      const newSite = document.getElementById('newSiteName').value.trim();
+      if (newSite) {
+        sites.push(newSite);
+        renderSites();
+        document.getElementById('newSiteName').value = '';
+      }
+    }
+
+    function updateSiteName(index) {
+      const newName = document.getElementById(`site-name-${index}`).value;
+      sites[index] = newName;
+      renderSites();
+    }
+
+    function updateInitial(index) {
+      const value = parseFloat(document.getElementById(`initial-${index}`).value) || 0;
+      siteData[index].balance = value;
+      siteData[index].records = [];
+      renderSites();
+    }
+
+    function addRecord(index) {
+      const date = document.getElementById(`date-${index}`).value;
+      const item = document.getElementById(`item-${index}`).value;
+      const cost = parseFloat(document.getElementById(`cost-${index}`).value) || 0;
+      const imgInput = document.getElementById(`img-${index}`);
+      const imgFile = imgInput.files[0];
+
+      const sendToGoogleSheets = (imageDataUrl = '') => {
+        fetch(GOOGLE_SCRIPT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            targetUrl: TARGET_SCRIPT_URL,
+            site: sites[index],
+            date,
+            item,
+            cost,
+            image: imageDataUrl,
+            initBalance: document.getElementById(`initial-${index}`).value
+          })
+        })
+        .then(res => res.text())
+        .then(msg => alert('✅ 資料已儲存到雲端！'))
+        .catch(err => alert('❌ 發送失敗：' + err));
+      };
+
+      if (imgFile) {
+        const reader = new FileReader();
+        reader.onload = e => sendToGoogleSheets(e.target.result);
+        reader.readAsDataURL(imgFile);
+      } else {
+        sendToGoogleSheets('');
+      }
+    }
+  </script>
+</body>
+</html>
